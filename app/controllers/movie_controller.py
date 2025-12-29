@@ -1,6 +1,6 @@
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Path, Body
+from fastapi import APIRouter, Depends, Query, Path, Body, status
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
@@ -33,69 +33,64 @@ async def get_movies(
     service_factory: ServiceFactory = Depends(get_service_factory)
 ):
     """
-    Get all movies with pagination and filtering - EXACTLY as specified in PDF
+    Get all movies with pagination and filtering
     """
     try:
         skip = (page - 1) * page_size
-        
         if title or release_year or genre:
-            filtered_movies = []
-            
-            if title:
-                movies = movie_service.search_movies(title_query=title, skip=0, limit=1000)
-            else:
-                movies = movie_service.get_all_movies(skip=0, limit=1000)
-            
-            for movie in movies:
-                if release_year and movie.release_year != release_year:
-                    continue
-
-                if genre:
-                    genre_matched = False
-                    movie_genres = [g.name.lower() for g in movie.genres] if hasattr(movie, 'genres') else []
-                    if genre.lower() in movie_genres:
-                        genre_matched = True
-                    
-                    if not genre_matched:
-                        continue
+            if genre:
+                genre_service = service_factory.genres
+                genre_obj = genre_service.get_genre_by_name(genre)
+                if not genre_obj:
+                    return create_paginated_response(
+                        items=[],
+                        page=page,
+                        page_size=page_size,
+                        total_items=0
+                    )
                 
-                filtered_movies.append(movie)
-            
-            paginated_movies = filtered_movies[skip:skip + page_size]
-            
-            response_items = []
-            for movie in paginated_movies:
-                avg_rating = service_factory.ratings.get_average_rating(movie.id)
-                rating_count = len(movie.ratings) if hasattr(movie, 'ratings') else 0
-                
-                movie_response = MovieResponse(
-                    id=movie.id,
-                    title=movie.title,
-                    release_year=movie.release_year,
-                    director={
-                        "id": movie.director.id,
-                        "name": movie.director.name
-                    } if movie.director else None,
-                    genres=[genre.name for genre in movie.genres] if hasattr(movie, 'genres') else [],
-                    average_rating=avg_rating,
-                    ratings_count=rating_count
+                movies = movie_service.search_movies(
+                    genre_id=genre_obj.id,
+                    skip=skip,
+                    limit=page_size
                 )
-                response_items.append(movie_response.model_dump())
-            
-            return create_paginated_response(
-                items=response_items,
-                page=page,
-                page_size=page_size,
-                total_items=len(filtered_movies)
-            )
-        
-        all_movies = movie_service.get_all_movies(skip=skip, limit=page_size)
-        total_count = movie_service.count_movies()
+                
+                filtered_movies = []
+                for movie in movies:
+                    if title and title.lower() not in movie.title.lower():
+                        continue
+                    if release_year and movie.release_year != release_year:
+                        continue
+                    filtered_movies.append(movie)
+                
+                total_count = len(filtered_movies)
+                movies_to_display = filtered_movies
+                
+            else:
+                if title:
+                    movies = movie_service.search_movies(
+                        title_query=title,
+                        skip=skip,
+                        limit=page_size
+                    )
+                elif release_year:
+                    all_movies = movie_service.get_all_movies(skip=0, limit=1000)
+                    movies = [m for m in all_movies if m.release_year == release_year]
+                    movies = movies[skip:skip + page_size]
+                else:
+                    movies = movie_service.get_all_movies(skip=skip, limit=page_size)
+                
+                total_count = movie_service.count_movies()
+                movies_to_display = movies
+        else:
+            movies = movie_service.get_all_movies(skip=skip, limit=page_size)
+            total_count = movie_service.count_movies()
+            movies_to_display = movies
         
         response_items = []
-        for movie in all_movies:
+        for movie in movies_to_display:
             avg_rating = service_factory.ratings.get_average_rating(movie.id)
-            rating_count = len(movie.ratings) if hasattr(movie, 'ratings') else 0
+            rating_count = len(movie.ratings) if hasattr(movie, 'ratings') and movie.ratings else 0
             
             movie_response = MovieResponse(
                 id=movie.id,
@@ -105,7 +100,7 @@ async def get_movies(
                     "id": movie.director.id,
                     "name": movie.director.name
                 } if movie.director else None,
-                genres=[genre.name for genre in movie.genres] if hasattr(movie, 'genres') else [],
+                genres=[genre.name for genre in movie.genres] if hasattr(movie, 'genres') and movie.genres else [],
                 average_rating=avg_rating,
                 ratings_count=rating_count
             )
@@ -129,7 +124,7 @@ async def get_movie(
     service_factory: ServiceFactory = Depends(get_service_factory)
 ):
     """
-    Get movie details by ID - EXACTLY as specified in PDF
+    Get movie details by ID
     """
     try:
         movie = movie_service.get_movie_with_details(movie_id)
@@ -138,7 +133,7 @@ async def get_movie(
             return create_error_response(404, "Movie not found")
         
         avg_rating = service_factory.ratings.get_average_rating(movie_id)
-        rating_count = len(movie.ratings) if hasattr(movie, 'ratings') else 0
+        rating_count = len(movie.ratings) if hasattr(movie, 'ratings') and movie.ratings else 0
         
         movie_detail = MovieDetailResponse(
             id=movie.id,
@@ -150,7 +145,7 @@ async def get_movie(
                 "birth_year": movie.director.birth_year,
                 "description": movie.director.description
             } if movie.director else None,
-            genres=[genre.name for genre in movie.genres] if hasattr(movie, 'genres') else [],
+            genres=[genre.name for genre in movie.genres] if hasattr(movie, 'genres') and movie.genres else [],
             cast=movie.cast,
             average_rating=avg_rating,
             ratings_count=rating_count,
@@ -173,7 +168,7 @@ async def create_movie(
     service_factory: ServiceFactory = Depends(get_service_factory)
 ):
     """
-    Create a new movie - EXACTLY as specified in PDF
+    Create a new movie
     """
     try:
         movie = movie_service.create_movie(
@@ -194,7 +189,7 @@ async def create_movie(
                 "id": created_movie.director.id,
                 "name": created_movie.director.name
             } if created_movie.director else None,
-            genres=[genre.name for genre in created_movie.genres] if hasattr(created_movie, 'genres') else [],
+            genres=[genre.name for genre in created_movie.genres] if hasattr(created_movie, 'genres') and created_movie.genres else [],
             cast=created_movie.cast,
             average_rating=None,
             ratings_count=0,
@@ -220,7 +215,7 @@ async def update_movie(
     service_factory: ServiceFactory = Depends(get_service_factory)
 ):
     """
-    Update movie information - EXACTLY as specified in PDF
+    Update movie information
     """
     try:
         update_dict = {}
@@ -239,8 +234,8 @@ async def update_movie(
         
         if movie_data.genres is not None:
             movie = movie_service.update_movie_genres(movie_id, movie_data.genres)
-        elif not update_dict:
-            movie = movie_service.get_movie_with_details(movie_id)
+        elif not update_dict and movie_data.genres is None:
+            return create_error_response(400, "No update data provided")
         
         if not movie:
             return create_error_response(404, f"Movie with id {movie_id} not found")
@@ -248,7 +243,7 @@ async def update_movie(
         updated_movie = movie_service.get_movie_with_details(movie.id)
         
         avg_rating = service_factory.ratings.get_average_rating(movie_id)
-        rating_count = len(updated_movie.ratings) if hasattr(updated_movie, 'ratings') else 0
+        rating_count = len(updated_movie.ratings) if hasattr(updated_movie, 'ratings') and updated_movie.ratings else 0
         
         movie_detail = MovieDetailResponse(
             id=updated_movie.id,
@@ -258,7 +253,7 @@ async def update_movie(
                 "id": updated_movie.director.id,
                 "name": updated_movie.director.name
             } if updated_movie.director else None,
-            genres=[genre.name for genre in updated_movie.genres] if hasattr(updated_movie, 'genres') else [],
+            genres=[genre.name for genre in updated_movie.genres] if hasattr(updated_movie, 'genres') and updated_movie.genres else [],
             cast=updated_movie.cast,
             average_rating=avg_rating,
             ratings_count=rating_count,
@@ -276,25 +271,34 @@ async def update_movie(
         return create_error_response(500, f"Internal server error: {str(e)}")
 
 
-@router.delete("/{movie_id}")
+@router.delete(
+    "/{movie_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={
+        204: {"description": "Movie deleted successfully"},
+        404: {
+            "description": "Movie not found",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "status": "failure",
+                        "error": {"code": 404, "message": "Movie not found"}
+                    }
+                }
+            }
+        }
+    }
+)
 async def delete_movie(
     movie_id: int = Path(..., description="Movie ID"),
     movie_service: MovieService = Depends(get_movie_service)
 ):
     """
-    Delete a movie - EXACTLY as specified in PDF
+    Delete a movie
     """
-    try:
-        result = movie_service.delete_movie(movie_id)
-        if not result:
-            return create_error_response(404, "Movie not found")
-        
-        return Response(status_code=204)
-        
-    except NotFoundError as e:
-        return create_error_response(404, str(e))
-    except Exception as e:
-        return create_error_response(500, f"Internal server error: {str(e)}")
+    movie_service.delete_movie(movie_id)
+    
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.post("/{movie_id}/ratings", response_model=dict, status_code=201)
@@ -305,7 +309,7 @@ async def create_movie_rating(
     service_factory: ServiceFactory = Depends(get_service_factory)
 ):
     """
-    Add a rating to a movie - EXACTLY as specified in PDF
+    Add a rating to a movie
     """
     try:
         movie_service = service_factory.movies

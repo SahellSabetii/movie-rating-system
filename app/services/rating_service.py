@@ -104,20 +104,7 @@ class RatingService:
     def get_recent_ratings(self, limit: int = 50) -> List[MovieRating]:
         """Get most recent ratings across all movies"""
         return self._get_rating_repo().get_recent_ratings(limit)
-    
-    def get_rating_distribution(self, movie_id: int) -> List[Dict[str, Any]]:
-        """Get count of ratings for each score (1-10) for a movie"""
-        movie_repo = self._get_repo_factory().movies
-        if not movie_repo.exists(movie_id):
-            raise NotFoundError("Movie", str(movie_id))
-        
-        distribution = self._get_rating_repo().get_rating_distribution(movie_id)
-        
-        return [
-            {"score": score, "count": count}
-            for score, count in distribution
-        ]
-    
+
     def calculate_overall_stats(self) -> Dict[str, Any]:
         """Calculate overall rating statistics for all movies"""
         rating_repo = self._get_rating_repo()

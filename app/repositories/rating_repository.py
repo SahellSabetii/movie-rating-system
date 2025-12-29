@@ -124,21 +124,3 @@ class RatingRepository(BaseRepository[MovieRating]):
             )
         except Exception as e:
             raise DatabaseError(f"Failed to get ratings for user {user_id}", e)
-    
-    def get_rating_distribution(self, movie_id: int) -> List[Tuple[int, int]]:
-        """Get count of ratings for each score (1-10) for a movie"""
-        try:
-            results = (
-                self.db.query(
-                    MovieRating.score,
-                    func.count(MovieRating.id).label('count')
-                )
-                .filter(MovieRating.movie_id == movie_id)
-                .group_by(MovieRating.score)
-                .order_by(MovieRating.score)
-                .all()
-            )
-            
-            return [(score, count) for score, count in results]
-        except Exception as e:
-            raise DatabaseError(f"Failed to get rating distribution for movie {movie_id}", e)

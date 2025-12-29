@@ -166,7 +166,23 @@ async def update_director(
         return create_error_response(500, f"Internal server error: {str(e)}")
 
 
-@router.delete("/{director_id}")
+@router.delete(
+    "/{director_id}",
+    responses={
+        204: {"description": "Director deleted successfully"},
+        404: {
+            "description": "Director not found",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "status": "failure",
+                        "error": {"code": 404, "message": "Director not found"}
+                    }
+                }
+            }
+        }
+    }
+)
 async def delete_director(
     director_id: int = Path(..., description="Director ID"),
     director_service: DirectorService = Depends(get_director_service)

@@ -157,7 +157,23 @@ async def update_genre(
         return create_error_response(500, f"Internal server error: {str(e)}")
 
 
-@router.delete("/{genre_id}")
+@router.delete(
+    "/{genre_id}",
+    responses={
+        204: {"description": "Genre deleted successfully"},
+        404: {
+            "description": "Genre not found",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "status": "failure",
+                        "error": {"code": 404, "message": "Genre not found"}
+                    }
+                }
+            }
+        }
+    }
+)
 async def delete_genre(
     genre_id: int = Path(..., description="Genre ID"),
     genre_service: GenreService = Depends(get_genre_service)

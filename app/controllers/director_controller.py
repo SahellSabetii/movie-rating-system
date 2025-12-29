@@ -169,14 +169,14 @@ async def update_director(
 @router.delete(
     "/{director_id}",
     responses={
-        204: {"description": "Genre deleted successfully"},
+        204: {"description": "Director deleted successfully"},
         404: {
-            "description": "Genre not found",
+            "description": "Director not found",
             "content": {
                 "application/json": {
                     "example": {
                         "status": "failure",
-                        "error": {"code": 404, "message": "Genre not found"}
+                        "error": {"code": 404, "message": "Director not found"}
                     }
                 }
             }

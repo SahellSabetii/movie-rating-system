@@ -2,7 +2,7 @@ from typing import List, Optional, Dict, Any
 
 from sqlalchemy.orm import Session
 
-from app.models import Movie, Director, Genre
+from app.models import Movie
 from app.repositories import MovieRepository, RepositoryFactory
 from app.exceptions import NotFoundError, ValidationError, AlreadyExistsError
 
@@ -62,7 +62,7 @@ class MovieService:
             if not (1888 <= release_year <= 2100):
                 raise ValidationError("release_year", "Release year must be between 1888 and 2100")
         
-        existing = self._get_movie_repo().get_by_field('name', title.strip())
+        existing = self._get_movie_repo().get_by_title(title.strip())
         if existing:
             raise AlreadyExistsError("Movie", title)
 
@@ -90,15 +90,21 @@ class MovieService:
         update_data = {}
         if title is not None:
             update_data["title"] = title.strip()
+            existing = self._get_movie_repo().get_by_title(title.strip())
+            if existing and existing.id != movie_id:
+                raise AlreadyExistsError("Movie", title)
+        
         if director_id is not None:
             director_repo = self._get_repo_factory().directors
             if not director_repo.exists(director_id):
                 raise ValidationError("director_id", f"Director with id {director_id} does not exist")
             update_data["director_id"] = director_id
+        
         if release_year is not None:
             if not (1888 <= release_year <= 2100):
                 raise ValidationError("release_year", "Release year must be between 1888 and 2100")
             update_data["release_year"] = release_year
+        
         if cast is not None:
             update_data["cast"] = cast
         

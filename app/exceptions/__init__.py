@@ -1,5 +1,4 @@
 from app.exceptions.base import MovieRatingError
-from app.exceptions.db import DatabaseError
 from app.exceptions.service import NotFoundError, AlreadyExistsError, ValidationError
 
 
@@ -8,5 +7,4 @@ __all__ = [
     "NotFoundError", 
     "AlreadyExistsError",
     "ValidationError",
-    "DatabaseError"
 ]

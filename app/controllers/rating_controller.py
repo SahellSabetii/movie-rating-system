@@ -92,33 +92,6 @@ async def get_movie_rating_stats(
         return create_error_response(500, f"Internal server error: {str(e)}")
 
 
-@router.get("/movie/{movie_id}/distribution", response_model=dict)
-async def get_movie_rating_distribution(
-    movie_id: int = Path(..., description="Movie ID"),
-    rating_service: RatingService = Depends(get_rating_service)
-):
-    """
-    Get rating distribution for a movie
-    """
-    try:
-        distribution = rating_service.get_rating_distribution(movie_id)
-        
-        response_items = []
-        for score, count in distribution:
-            distribution_response = RatingDistributionResponse(
-                score=score,
-                count=count
-            )
-            response_items.append(distribution_response.model_dump())
-        
-        return create_success_response(response_items)
-        
-    except NotFoundError as e:
-        return create_error_response(404, str(e))
-    except Exception as e:
-        return create_error_response(500, f"Internal server error: {str(e)}")
-
-
 @router.get("/recent", response_model=dict)
 async def get_recent_ratings(
     limit: int = Query(50, ge=1, le=100, description="Number of recent ratings"),

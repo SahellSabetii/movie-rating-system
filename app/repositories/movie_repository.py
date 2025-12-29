@@ -14,6 +14,17 @@ class MovieRepository(BaseRepository[Movie]):
     def __init__(self, db: Session):
         super().__init__(Movie, db)
     
+    def get_by_title(self, title: str) -> Optional[Movie]:
+        """Get a movie by exact title (case-insensitive)"""
+        try:
+            return (
+                self.db.query(Movie)
+                .filter(func.lower(Movie.title) == func.lower(title))
+                .first()
+            )
+        except Exception as e:
+            raise DatabaseError(f"Failed to get movie by title '{title}'", e)
+    
     def get_with_details(self, movie_id: int) -> Optional[Movie]:
         """Get a movie with director, genres, and ratings loaded"""
         try:

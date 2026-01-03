@@ -4,6 +4,7 @@ import json
 import sys
 from datetime import datetime
 from typing import Dict, Any
+from pathlib import Path
 
 
 class JsonFormatter(logging.Formatter):
@@ -33,6 +34,9 @@ class JsonFormatter(logging.Formatter):
 def setup_logging(env: str = "development"):
     """Setup logging configuration based on environment"""
     
+    log_dir = Path("logs")
+    log_dir.mkdir(exist_ok=True)
+    
     if env == "production":
         level = logging.INFO
         json_format = True
@@ -40,12 +44,16 @@ def setup_logging(env: str = "development"):
         level = logging.DEBUG
         json_format = False
     
-    logging.getLogger().handlers.clear()
-    
     root_logger = logging.getLogger()
+    for handler in root_logger.handlers[:]:
+        root_logger.removeHandler(handler)
+    
     root_logger.setLevel(level)
     
-    console_handler = logging.StreamHandler(sys.stdout)
+    file_handler = logging.FileHandler(
+        log_dir / "movie.log",
+        encoding='utf-8'
+    )
     
     if json_format:
         formatter = JsonFormatter()
@@ -54,17 +62,21 @@ def setup_logging(env: str = "development"):
             '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
         )
     
-    console_handler.setFormatter(formatter)
-    root_logger.addHandler(console_handler)
-    
+    file_handler.setFormatter(formatter)
+    root_logger.addHandler(file_handler)
+
     logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
     logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
-    
-    module_logger = logging.getLogger("movie_rating")
+
+    module_logger = logging.getLogger("movie")
     module_logger.setLevel(level)
+
+    module_logger.info(f"Logging initialized. Environment: {env}")
+    module_logger.info(f"Log file: {log_dir / 'movie.log'}")
     
     return module_logger
 
-def get_logger(name: str = "movie_rating"):
+
+def get_logger(name: str = "movie"):
     """Get a logger instance with the given name"""
     return logging.getLogger(name)

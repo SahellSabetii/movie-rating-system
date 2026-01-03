@@ -1,3 +1,4 @@
+import logging
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Query, Path, Body, status
@@ -19,6 +20,9 @@ from app.services.factory import ServiceFactory
 from app.services.rating_service import RatingService
 from app.exceptions import NotFoundError, ValidationError, AlreadyExistsError
 
+
+logger = logging.getLogger("movie_rating")
+
 router = APIRouter(prefix="/api/v1/movies", tags=["movies"])
 
 
@@ -36,12 +40,26 @@ async def get_movies(
     Get all movies with pagination and filtering
     """
     try:
+        logger.info(
+            "Fetching movies",
+            extra={
+                "route": "/api/v1/movies",
+                "title_filter": title,
+                "release_year_filter": release_year,
+                "genre_filter": genre,
+                "page": page,
+                "page_size": page_size
+            }
+        )
+
         skip = (page - 1) * page_size
         if title or release_year or genre:
             if genre:
+                logger.debug(f"Filtering by genre: {genre}")
                 genre_service = service_factory.genres
                 genre_obj = genre_service.get_genre_by_name(genre)
                 if not genre_obj:
+                    logger.info(f"No genre found with name: {genre}")
                     return create_paginated_response(
                         items=[],
                         page=page,
@@ -68,12 +86,14 @@ async def get_movies(
                 
             else:
                 if title:
+                    logger.debug(f"Searching by title: {title}")
                     movies = movie_service.search_movies(
                         title_query=title,
                         skip=skip,
                         limit=page_size
                     )
                 elif release_year:
+                    logger.debug(f"Filtering by release year: {release_year}")
                     all_movies = movie_service.get_all_movies(skip=0, limit=1000)
                     movies = [m for m in all_movies if m.release_year == release_year]
                     movies = movies[skip:skip + page_size]
@@ -83,6 +103,7 @@ async def get_movies(
                 total_count = movie_service.count_movies()
                 movies_to_display = movies
         else:
+            logger.debug(f"Fetching all movies (page={page}, page_size={page_size})")
             movies = movie_service.get_all_movies(skip=skip, limit=page_size)
             total_count = movie_service.count_movies()
             movies_to_display = movies
@@ -106,6 +127,17 @@ async def get_movies(
             )
             response_items.append(movie_response.model_dump())
         
+        logger.info(
+            "Movies fetched successfully",
+            extra={
+                "route": "/api/v1/movies",
+                "total_movies": total_count,
+                "returned_count": len(response_items),
+                "page": page,
+                "page_size": page_size
+            }
+        )
+
         return create_paginated_response(
             items=response_items,
             page=page,
@@ -114,6 +146,15 @@ async def get_movies(
         )
         
     except Exception as e:
+        logger.error(
+            f"Error fetching movies: {str(e)}",
+            extra={
+                "route": "/api/v1/movies",
+                "error_type": type(e).__name__,
+                "error_message": str(e)
+            },
+            exc_info=True
+        )
         return create_error_response(500, f"Internal server error: {str(e)}")
 
 
@@ -127,9 +168,18 @@ async def get_movie(
     Get movie details by ID
     """
     try:
+        logger.info(
+            f"Fetching movie details for ID: {movie_id}",
+            extra={
+                "route": f"/api/v1/movies/{movie_id}",
+                "movie_id": movie_id
+            }
+        )
+
         movie = movie_service.get_movie_with_details(movie_id)
         
         if not movie:
+            logger.warning(f"Movie not found with ID: {movie_id}")
             return create_error_response(404, "Movie not found")
         
         avg_rating = service_factory.ratings.get_average_rating(movie_id)
@@ -153,11 +203,38 @@ async def get_movie(
             updated_at=movie.updated_at.isoformat() if movie.updated_at else None
         )
         
+        logger.info(
+            f"Movie details fetched successfully for ID: {movie_id}",
+            extra={
+                "route": f"/api/v1/movies/{movie_id}",
+                "movie_id": movie_id,
+                "movie_title": movie.title
+            }
+        )
+
         return create_success_response(movie_detail.model_dump())
         
     except NotFoundError as e:
+        logger.warning(
+            f"Movie not found: {str(e)}",
+            extra={
+                "route": f"/api/v1/movies/{movie_id}",
+                "movie_id": movie_id,
+                "error_message": str(e)
+            }
+        )
         return create_error_response(404, str(e))
     except Exception as e:
+        logger.error(
+            f"Error fetching movie details for ID {movie_id}: {str(e)}",
+            extra={
+                "route": f"/api/v1/movies/{movie_id}",
+                "movie_id": movie_id,
+                "error_type": type(e).__name__,
+                "error_message": str(e)
+            },
+            exc_info=True
+        )
         return create_error_response(500, f"Internal server error: {str(e)}")
 
 
@@ -312,18 +389,31 @@ async def create_movie_rating(
     Add a rating to a movie
     """
     try:
+        logger.info(
+            "Creating movie rating",
+            extra={
+                "route": f"/api/v1/movies/{movie_id}/ratings",
+                "movie_id": movie_id,
+                "rating_data": rating_data
+            }
+        )
+
         movie_service = service_factory.movies
         if not movie_service.movie_exists(movie_id):
+            logger.warning(f"Movie not found when creating rating: {movie_id}")
             return create_error_response(404, "Movie not found")
         
         if "score" not in rating_data:
+            logger.warning("Score not provided in rating data")
             return create_error_response(422, "Score is required")
         
         score = rating_data["score"]
         
         if not isinstance(score, int) or not (1 <= score <= 10):
+            logger.warning(f"Invalid rating score: {score}")
             return create_error_response(422, "Score must be an integer between 1 and 10")
         
+        logger.debug(f"Creating rating for movie {movie_id} with score {score}")
         rating = rating_service.create_rating(movie_id=movie_id, score=score)
         
         response = {
@@ -333,11 +423,48 @@ async def create_movie_rating(
             "created_at": rating.created_at.isoformat() if rating.created_at else None
         }
         
+        logger.info(
+            "Movie rating created successfully",
+            extra={
+                "route": f"/api/v1/movies/{movie_id}/ratings",
+                "movie_id": movie_id,
+                "rating_id": rating.id,
+                "score": score
+            }
+        )
+
         return create_success_response(response)
         
     except ValidationError as e:
+        logger.warning(
+            f"Validation error creating rating: {str(e)}",
+            extra={
+                "route": f"/api/v1/movies/{movie_id}/ratings",
+                "movie_id": movie_id,
+                "error_message": str(e)
+            }
+        )
         return create_error_response(422, str(e))
     except NotFoundError as e:
+        logger.warning(
+            f"Movie not found when creating rating: {str(e)}",
+            extra={
+                "route": f"/api/v1/movies/{movie_id}/ratings",
+                "movie_id": movie_id,
+                "error_message": str(e)
+            }
+        )
         return create_error_response(404, str(e))
     except Exception as e:
+        logger.error(
+            f"Error creating movie rating: {str(e)}",
+            extra={
+                "route": f"/api/v1/movies/{movie_id}/ratings",
+                "movie_id": movie_id,
+                "score": score if 'score' in locals() else None,
+                "error_type": type(e).__name__,
+                "error_message": str(e)
+            },
+            exc_info=True
+        )
         return create_error_response(500, f"Internal server error: {str(e)}")

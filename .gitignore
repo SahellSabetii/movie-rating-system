@@ -218,3 +218,4 @@ __marimo__/
 
 alembic/versions/*
 !.gitkeep
+!alembic/versions/__init__.py
